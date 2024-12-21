@@ -29,11 +29,12 @@ jobs:
         run: |
           mkdir -p docs/converted
           for file in uploads/*; do
-            if [ -f "$file" ]; then
+            if [ -f "$file" ] && [ "$(basename "$file")" != ".gitkeep" ]; then
               filename=$(basename "$file")
               output_file="docs/converted/${filename%.*}.md"
               echo "Converting $filename to Markdown..."
-              markitdown "$file" -o "$output_file" || echo "Failed to convert $filename"
+              # 使用管道方式运行 markitdown
+              cat "$file" | markitdown > "$output_file" || echo "Failed to convert $filename"
             fi
           done
           

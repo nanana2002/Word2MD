@@ -1,6 +1,6 @@
 // GitHub API configuration
 const GITHUB_API = 'https://api.github.com';
-const REPO_OWNER = ''; // TODO: Replace with your GitHub username
+let REPO_OWNER = ''; // Will be set from the token
 const REPO_NAME = 'Word2MD';
 const BRANCH = 'main';
 
@@ -9,6 +9,59 @@ const dropZone = document.getElementById('dropZone');
 const fileInput = document.getElementById('fileInput');
 const statusArea = document.getElementById('statusArea');
 const fileList = document.getElementById('fileList');
+
+// Token management functions
+async function initializeGitHubToken() {
+    const token = localStorage.getItem('github_token');
+    if (!token) {
+        showTokenPrompt();
+        return false;
+    }
+    
+    try {
+        const response = await fetch(`${GITHUB_API}/user`, {
+            headers: {
+                'Authorization': `token ${token}`
+            }
+        });
+        
+        if (!response.ok) {
+            showTokenPrompt();
+            return false;
+        }
+        
+        const userData = await response.json();
+        REPO_OWNER = userData.login; // Set the repo owner from GitHub user data
+        return true;
+    } catch (error) {
+        console.error('Token verification failed:', error);
+        showTokenPrompt();
+        return false;
+    }
+}
+
+function showTokenPrompt() {
+    const token = prompt(
+        'Please enter your GitHub Personal Access Token (PAT).\n' +
+        'You can generate one at: https://github.com/settings/tokens\n' +
+        'Make sure to grant "repo" scope permissions.'
+    );
+    
+    if (token) {
+        localStorage.setItem('github_token', token);
+        initializeGitHubToken(); // Verify the new token
+    } else {
+        showStatus('GitHub token is required for file uploads', 'danger');
+    }
+}
+
+function getGitHubToken() {
+    const token = localStorage.getItem('github_token');
+    if (!token) {
+        throw new Error('GitHub token not found. Please refresh the page and enter your token.');
+    }
+    return token;
+}
 
 // Event Listeners
 dropZone.addEventListener('dragover', (e) => {
@@ -20,24 +73,41 @@ dropZone.addEventListener('dragleave', () => {
     dropZone.classList.remove('active');
 });
 
-dropZone.addEventListener('drop', (e) => {
+dropZone.addEventListener('drop', async (e) => {
     e.preventDefault();
     dropZone.classList.remove('active');
+    
+    if (!await initializeGitHubToken()) {
+        showStatus('Please set up your GitHub token first', 'danger');
+        return;
+    }
+    
     handleFiles(e.dataTransfer.files);
 });
 
-fileInput.addEventListener('change', (e) => {
+fileInput.addEventListener('change', async (e) => {
+    if (!await initializeGitHubToken()) {
+        showStatus('Please set up your GitHub token first', 'danger');
+        return;
+    }
+    
     handleFiles(e.target.files);
 });
 
 // File handling functions
 async function handleFiles(files) {
-    showStatus('Uploading files...');
+    if (!REPO_OWNER) {
+        showStatus('GitHub token not properly initialized', 'danger');
+        return;
+    }
+    
+    showStatus('Uploading files...', 'info');
     
     for (const file of files) {
         try {
             const content = await readFileAsBase64(file);
             await uploadToGitHub(file.name, content);
+            showStatus(`Uploaded ${file.name} successfully`, 'success');
         } catch (error) {
             console.error(`Error processing ${file.name}:`, error);
             showStatus(`Error processing ${file.name}: ${error.message}`, 'danger');
@@ -45,7 +115,6 @@ async function handleFiles(files) {
     }
     
     await updateFileList();
-    showStatus('Files uploaded successfully!', 'success');
 }
 
 function readFileAsBase64(file) {
@@ -109,6 +178,11 @@ async function updateFileList() {
 
 function renderFileList(files) {
     fileList.innerHTML = '';
+    if (!Array.isArray(files)) {
+        showStatus('No converted files available yet', 'info');
+        return;
+    }
+    
     files.forEach(file => {
         const li = document.createElement('li');
         li.className = 'list-group-item d-flex justify-content-between align-items-center';
@@ -127,56 +201,12 @@ function showStatus(message, type = 'info') {
     statusArea.textContent = message;
     statusArea.classList.remove('d-none');
     
-    if (type === 'success' || type === 'danger') {
+    if (type === 'success') {
         setTimeout(() => {
             statusArea.classList.add('d-none');
         }, 5000);
     }
 }
 
-// Token management functions
-async function initializeGitHubToken() {
-    const token = localStorage.getItem('github_token');
-    if (!token) {
-        showTokenPrompt();
-    } else {
-        // Verify token
-        try {
-            const response = await fetch(`${GITHUB_API}/user`, {
-                headers: {
-                    'Authorization': `token ${token}`
-                }
-            });
-            if (!response.ok) {
-                showTokenPrompt();
-            }
-        } catch (error) {
-            console.error('Token verification failed:', error);
-            showTokenPrompt();
-        }
-    }
-}
-
-function showTokenPrompt() {
-    const token = prompt(
-        'Please enter your GitHub Personal Access Token (PAT).\n' +
-        'You can generate one at: https://github.com/settings/tokens\n' +
-        'Make sure to grant "repo" scope permissions.'
-    );
-    if (token) {
-        localStorage.setItem('github_token', token);
-    } else {
-        showStatus('GitHub token is required for file uploads', 'danger');
-    }
-}
-
-function getGitHubToken() {
-    const token = localStorage.getItem('github_token');
-    if (!token) {
-        throw new Error('GitHub token not found. Please refresh the page and enter your token.');
-    }
-    return token;
-}
-
-// Call token initialization when page loads
+// Initialize the application
 document.addEventListener('DOMContentLoaded', initializeGitHubToken);

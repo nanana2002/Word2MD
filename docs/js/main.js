@@ -1,6 +1,6 @@
 // GitHub API configuration
 const GITHUB_API = 'https://api.github.com';
-let REPO_OWNER = ''; // Will be set from the token
+let REPO_OWNER = null; // Will be set after token verification
 const REPO_NAME = 'Word2MD';
 const BRANCH = 'main';
 
@@ -10,8 +10,26 @@ const fileInput = document.getElementById('fileInput');
 const statusArea = document.getElementById('statusArea');
 const fileList = document.getElementById('fileList');
 
+// Disable file upload elements initially
+function disableFileUpload() {
+    dropZone.style.opacity = '0.5';
+    dropZone.style.pointerEvents = 'none';
+    document.getElementById('fileInput').disabled = true;
+    showStatus('Please set up your GitHub token first', 'warning');
+}
+
+// Enable file upload elements after token verification
+function enableFileUpload() {
+    dropZone.style.opacity = '1';
+    dropZone.style.pointerEvents = 'auto';
+    document.getElementById('fileInput').disabled = false;
+    showStatus('Ready to upload files', 'success');
+}
+
 // Token management functions
 async function initializeGitHubToken() {
+    disableFileUpload(); // Disable upload until token is verified
+    
     const token = localStorage.getItem('github_token');
     if (!token) {
         showTokenPrompt();
@@ -26,15 +44,18 @@ async function initializeGitHubToken() {
         });
         
         if (!response.ok) {
+            localStorage.removeItem('github_token'); // Clear invalid token
             showTokenPrompt();
             return false;
         }
         
         const userData = await response.json();
-        REPO_OWNER = userData.login; // Set the repo owner from GitHub user data
+        REPO_OWNER = userData.login;
+        enableFileUpload(); // Enable upload after successful verification
         return true;
     } catch (error) {
         console.error('Token verification failed:', error);
+        localStorage.removeItem('github_token'); // Clear invalid token
         showTokenPrompt();
         return false;
     }
@@ -51,14 +72,15 @@ function showTokenPrompt() {
         localStorage.setItem('github_token', token);
         initializeGitHubToken(); // Verify the new token
     } else {
-        showStatus('GitHub token is required for file uploads', 'danger');
+        showStatus('GitHub token is required to use this converter', 'warning');
+        disableFileUpload();
     }
 }
 
 function getGitHubToken() {
     const token = localStorage.getItem('github_token');
     if (!token) {
-        throw new Error('GitHub token not found. Please refresh the page and enter your token.');
+        throw new Error('GitHub token not found. Please click "Update Token" to set your token.');
     }
     return token;
 }
@@ -77,8 +99,8 @@ dropZone.addEventListener('drop', async (e) => {
     e.preventDefault();
     dropZone.classList.remove('active');
     
-    if (!await initializeGitHubToken()) {
-        showStatus('Please set up your GitHub token first', 'danger');
+    if (!REPO_OWNER) {
+        showStatus('Please set up your GitHub token first', 'warning');
         return;
     }
     
@@ -86,8 +108,8 @@ dropZone.addEventListener('drop', async (e) => {
 });
 
 fileInput.addEventListener('change', async (e) => {
-    if (!await initializeGitHubToken()) {
-        showStatus('Please set up your GitHub token first', 'danger');
+    if (!REPO_OWNER) {
+        showStatus('Please set up your GitHub token first', 'warning');
         return;
     }
     

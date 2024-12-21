@@ -186,22 +186,32 @@ async function updateFileList() {
             }
         });
 
+        if (response.status === 404) {
+            // Directory doesn't exist yet, this is normal for new repositories
+            fileList.innerHTML = '<li class="list-group-item text-muted">No converted files available yet</li>';
+            return;
+        }
+
         if (!response.ok) {
-            throw new Error('Failed to fetch file list');
+            throw new Error(`Failed to fetch file list: ${response.statusText}`);
         }
 
         const files = await response.json();
         renderFileList(files);
     } catch (error) {
         console.error('Error updating file list:', error);
-        showStatus('Error loading file list', 'danger');
+        if (error.message.includes('404')) {
+            fileList.innerHTML = '<li class="list-group-item text-muted">No converted files available yet</li>';
+        } else {
+            showStatus('Error loading file list: ' + error.message, 'warning');
+        }
     }
 }
 
 function renderFileList(files) {
     fileList.innerHTML = '';
-    if (!Array.isArray(files)) {
-        showStatus('No converted files available yet', 'info');
+    if (!Array.isArray(files) || files.length === 0) {
+        fileList.innerHTML = '<li class="list-group-item text-muted">No converted files available yet</li>';
         return;
     }
     

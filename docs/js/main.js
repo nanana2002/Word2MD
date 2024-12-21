@@ -62,10 +62,11 @@ async function uploadToGitHub(filename, content) {
     const message = `Upload ${filename} for conversion`;
     
     try {
+        const token = getGitHubToken();
         const response = await fetch(`${GITHUB_API}/repos/${REPO_OWNER}/${REPO_NAME}/contents/${path}`, {
             method: 'PUT',
             headers: {
-                'Authorization': `token ${getGitHubToken()}`,
+                'Authorization': `token ${token}`,
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
@@ -76,10 +77,12 @@ async function uploadToGitHub(filename, content) {
         });
 
         if (!response.ok) {
-            throw new Error(`GitHub API error: ${response.statusText}`);
+            const errorData = await response.json();
+            throw new Error(`GitHub API error: ${errorData.message || response.statusText}`);
         }
     } catch (error) {
         console.error('Upload error:', error);
+        showStatus(`Upload failed: ${error.message}`, 'danger');
         throw error;
     }
 }
@@ -131,10 +134,49 @@ function showStatus(message, type = 'info') {
     }
 }
 
-function getGitHubToken() {
-    // TODO: Implement secure token storage/retrieval
-    return localStorage.getItem('github_token');
+// Token management functions
+async function initializeGitHubToken() {
+    const token = localStorage.getItem('github_token');
+    if (!token) {
+        showTokenPrompt();
+    } else {
+        // Verify token
+        try {
+            const response = await fetch(`${GITHUB_API}/user`, {
+                headers: {
+                    'Authorization': `token ${token}`
+                }
+            });
+            if (!response.ok) {
+                showTokenPrompt();
+            }
+        } catch (error) {
+            console.error('Token verification failed:', error);
+            showTokenPrompt();
+        }
+    }
 }
 
-// Initial file list load
-updateFileList();
+function showTokenPrompt() {
+    const token = prompt(
+        'Please enter your GitHub Personal Access Token (PAT).\n' +
+        'You can generate one at: https://github.com/settings/tokens\n' +
+        'Make sure to grant "repo" scope permissions.'
+    );
+    if (token) {
+        localStorage.setItem('github_token', token);
+    } else {
+        showStatus('GitHub token is required for file uploads', 'danger');
+    }
+}
+
+function getGitHubToken() {
+    const token = localStorage.getItem('github_token');
+    if (!token) {
+        throw new Error('GitHub token not found. Please refresh the page and enter your token.');
+    }
+    return token;
+}
+
+// Call token initialization when page loads
+document.addEventListener('DOMContentLoaded', initializeGitHubToken);
